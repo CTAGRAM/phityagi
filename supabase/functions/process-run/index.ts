@@ -328,7 +328,7 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
 Return a JSON object with:
 {
   "series_title": "string",
-  "essay_count": number (between 3 and 5),
+  "essay_count": 3,
   "essays": [
     {
       "number": 1,
@@ -355,17 +355,16 @@ Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
       // If JSON parse fails, create a fallback blueprint
       blueprint = {
         series_title: `${run.target_philosophy}: A Philosophical Series`,
-        essay_count: 4,
+        essay_count: 3,
         essays: [
           { number: 1, title: `Foundations of ${run.target_philosophy}`, scope: "Overview, sources, and scope of the tradition.", depends_on: [] },
           { number: 2, title: `Core Doctrines and Epistemology`, scope: "The main philosophical claims and theory of knowledge.", depends_on: [1] },
-          { number: 3, title: `Ethics, Practice, and the Ideal Life`, scope: "Moral philosophy and practical wisdom from the tradition.", depends_on: [1, 2] },
-          { number: 4, title: `Legacy, Reception, and Modern Relevance`, scope: "Historical influence and contemporary significance.", depends_on: [1, 2, 3] },
+          { number: 3, title: `Legacy, Reception, and Modern Relevance`, scope: "Historical influence, practical implications, and contemporary significance.", depends_on: [1, 2] },
         ],
       };
     }
 
-    const essayPlan = blueprint.essays || [];
+    const essayPlan = (blueprint.essays || []).slice(0, 3); // Hard cap at 3 to fit within Edge Function timeout
     const essayCount = essayPlan.length;
 
     // ── Stage 8: Coverage Audit ────────────────────────────────────────────

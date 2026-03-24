@@ -13,7 +13,7 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  let body: { runId?: string; apiKey?: string } = {};
+  let body: { runId?: string } = {};
   try {
     body = await req.json();
   } catch {
@@ -23,11 +23,20 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { runId, apiKey } = body;
-  if (!runId || !apiKey) {
-    return new Response(JSON.stringify({ error: "Missing runId or apiKey" }), {
+  const { runId } = body;
+  if (!runId) {
+    return new Response(JSON.stringify({ error: "Missing runId" }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,
+    });
+  }
+
+  // Read API key from server-side secret — never exposed to the client
+  const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
+  if (!apiKey) {
+    return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured on server" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
     });
   }
 

@@ -128,13 +128,9 @@ export default function NewRunPage() {
       }
 
       // 5. Trigger the Background Edge Function Pipeline
-      // Fire and forget (no await) so it runs in background
+      // The Edge Function reads GEMINI_API_KEY from server-side secrets
       supabase.functions.invoke('process-run', {
-        body: { 
-          runId: run.id, 
-          // Use BYOK key here. For MVP, we pass the user's provided key
-          apiKey: 'REDACTED_KEY'
-        }
+        body: { runId: run.id }
       }).catch(err => console.error("Edge function trigger failed:", err));
 
       // 6. Success! Navigate to the timeline/run page

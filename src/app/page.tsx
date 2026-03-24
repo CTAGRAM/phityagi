@@ -1,65 +1,125 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import Link from 'next/link';
+import { PlusCircle, BookOpen, Sparkles, BrainCircuit, Workflow, ShieldCheck, ArrowRight, Layers } from 'lucide-react';
+
+const features = [
+  {
+    icon: BrainCircuit,
+    title: 'Deep Extraction',
+    description: 'Isolating core philosophical arguments without hallucination.',
+  },
+  {
+    icon: Workflow,
+    title: '16-Stage Intelligence',
+    description: 'Autonomous pipeline orchestrating drafting, and cross-referencing.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Scholarly Rigor',
+    description: 'Every claim is structurally tied back to the primary source.',
+  },
+  {
+    icon: Layers,
+    title: 'Coherent Series',
+    description: 'A single integrated work with complete internal cross-references.',
+  },
+];
+
+export default function DashboardPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen px-6 py-12 lg:px-16 overflow-hidden">
+      <div className="max-w-6xl mx-auto flex flex-col">
+        
+        {/* Hero Section */}
+        <div className="w-full max-w-3xl mb-24 mt-8 animate-fade-in-up">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded border border-neutral-800 bg-neutral-900/50 mb-8">
+            <Sparkles className="w-3.5 h-3.5 text-neutral-400" />
+            <span className="text-[11px] font-mono uppercase tracking-wider text-neutral-300">v1.0 Engine Available</span>
+          </div>
+
+          <h1 className="text-5xl md:text-6xl font-semibold mb-6 leading-tight tracking-tight text-white">
+            Synthesize philosophy. <br />
+            <span className="text-neutral-500">At scale.</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          
+          <p className="text-neutral-400 text-lg mb-10 leading-relaxed max-w-xl font-light">
+            Upload your corpus. The engine reads, plans, and writes
+            a complete essay series — citation-backed, internally coherent, and
+            scholarly precise.
           </p>
+
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <Link
+              href="/runs/new"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-md bg-white text-black font-medium text-sm transition-all hover:bg-neutral-200 w-full sm:w-auto"
+            >
+              Initialize Pipeline
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            
+            <Link
+              href="/runs"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-md bg-transparent text-white border border-neutral-800 hover:bg-neutral-900 font-medium text-sm transition-all w-full sm:w-auto"
+            >
+              View Library
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Features Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-neutral-800/50 border border-neutral-800 rounded-xl overflow-hidden mb-24 w-full">
+          {features.map((feature) => (
+            <div
+              key={feature.title}
+              className="bg-black p-8 flex flex-col items-start transition-colors hover:bg-neutral-900/50 group"
+            >
+              <div className="mb-5 text-neutral-100">
+                <feature.icon className="w-5 h-5 text-current opacity-80" />
+              </div>
+              <h3 className="text-sm font-medium text-white mb-2 tracking-tight">
+                {feature.title}
+              </h3>
+              <p className="text-sm text-neutral-400 leading-relaxed font-light">
+                {feature.description}
+              </p>
+            </div>
+          ))}
         </div>
-      </main>
+
+        {/* Recent Runs Section */}
+        <div className="w-full">
+          <div className="flex items-center justify-between border-b border-neutral-800 pb-4 mb-6">
+            <h2 className="text-lg font-medium text-white">
+              Recent Pipeline Runs
+            </h2>
+            <Link href="/runs" className="text-xs font-medium text-neutral-400 hover:text-white transition-colors flex items-center gap-1 group">
+              View all
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </div>
+          
+          <div className="rounded-xl border border-dashed border-neutral-800 bg-black/50 p-12 text-center">
+            <div className="flex flex-col items-center">
+              <div className="w-12 h-12 rounded-lg bg-neutral-900 flex items-center justify-center mb-4 border border-neutral-800">
+                <BookOpen className="w-5 h-5 text-neutral-500" />
+              </div>
+              <h3 className="text-sm font-medium text-white mb-1">Library is empty</h3>
+              <p className="text-neutral-500 text-sm mb-6 max-w-sm mx-auto font-light">
+                Initialize your first run to extract knowledge and generate an essay series from your corpus.
+              </p>
+              <Link
+                href="/runs/new"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded border border-neutral-800 text-white hover:bg-neutral-900 transition-all font-medium text-xs"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                Initialize Run
+              </Link>
+            </div>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }

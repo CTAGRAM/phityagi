@@ -43,12 +43,13 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-**Windows (PowerShell):**
+**Windows (PowerShell or CMD):**
 ```powershell
 git clone https://github.com/CTAGRAM/phityagi.git
 cd phityagi
 .\setup.bat
 ```
+> ⚠️ **Windows users:** You must type `.\setup.bat` (with the `.\` prefix), not just `setup.bat`. PowerShell requires this to run scripts from the current directory.
 
 The setup script will:
 1. ✅ Check that Node.js is installed

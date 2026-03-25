@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { Sidebar } from '@/components/layout/Sidebar';
+import { ConditionalLayout } from '@/components/layout/ConditionalLayout';
 
 export const metadata: Metadata = {
   title: 'Philosophy Series Engine',
@@ -15,13 +15,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+      </head>
       <body className="min-h-screen bg-black text-white antialiased">
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <main className="flex-1 min-w-0 overflow-x-hidden">
-            {children}
-          </main>
-        </div>
+        <ConditionalLayout>{children}</ConditionalLayout>
       </body>
     </html>
   );

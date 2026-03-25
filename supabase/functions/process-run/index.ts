@@ -386,64 +386,29 @@ Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
       .update({ total_essays: essayCount, completed_essays: 0 })
       .eq("id", runId);
 
-    const seriesBible = `Philosophy: ${run.target_philosophy}
-Tone: ${run.tone_preset}
-Scope: ${scopeStatement}
-Series Title: ${blueprint.series_title || run.target_philosophy + ": A Series"}
-Corpus Only: ${run.corpus_only}
-
-Essay Plan:
-${essayPlan.map((e: any) => `Essay ${e.number}: ${e.title} — ${e.scope}`).join("\n")}`;
-
+    const corpusExcerpt = combinedText.slice(0, 1500);
     const draftedEssays: string[] = [];
 
     for (let i = 0; i < essayPlan.length; i++) {
       const essayDef = essayPlan[i];
-      const previousContext = draftedEssays.length > 0 ? draftedEssays[draftedEssays.length - 1].slice(0, 500) : "";
+      const prevSummary = draftedEssays.length > 0 ? draftedEssays[draftedEssays.length - 1].slice(0, 300) : "";
 
-      const toneInstructions: Record<string, string> = {
-        scholarly: "Write in neutral, rigorous academic prose with clear argumentation.",
-        analytical: "Write in austere analytical style, precise and economical.",
-        literary: "Write in grand literary essayistic style with elegant sentences.",
-        pedagogical: "Write in clear pedagogical style, accessible yet rigorous.",
-        explanatory: "Write in lucid explanatory style for intelligent non-specialists.",
-        custom: run.custom_tone || "Write in the specified custom style.",
+      const toneMap: Record<string, string> = {
+        scholarly: "academic prose", analytical: "analytical style",
+        literary: "literary style", pedagogical: "pedagogical style",
+        explanatory: "explanatory style", custom: run.custom_tone || "custom style",
       };
-      const toneInstruction = toneInstructions[run.tone_preset] || toneInstructions.scholarly;
 
-      const citationInstruction = run.citation_style === 'footnotes' 
-        ? 'Include markdown footnotes (e.g. [^1]) at the bottom of the essay for citations.'
-        : run.citation_style === 'endnotes'
-        ? 'Include endnotes at the end of the main body.'
-        : 'Include inline citations like (Source document, page/section).';
-
-      const essayPrompt = `You are a world-class philosopher-scholar writing Essay ${essayDef.number} of ${essayCount} for a definitive series on "${run.target_philosophy}".
-
-SERIES BIBLE:
-${seriesBible}
-
-PREVIOUS ESSAYS (for continuity):
-${previousContext || "(This is the first essay — establish scope and foundations.)"}
-
-YOUR ESSAY ASSIGNMENT:
-Title: ${essayDef.title}
+      const essayPrompt = `Write Essay ${essayDef.number}/${essayCount} titled "${essayDef.title}" for a series on "${run.target_philosophy}".
 Scope: ${essayDef.scope}
+Style: ${toneMap[run.tone_preset] || "academic prose"}
+Citations: ${run.citation_style || "inline"}
+${prevSummary ? `Previous essay ended with: ${prevSummary}` : "This is the first essay."}
 
-CORPUS TEXT (ground your claims in this; do not hallucinate):
-${combinedText.slice(0, 3000)}
+Source material:
+${corpusExcerpt}
 
-WRITING INSTRUCTIONS:
-- ${toneInstruction}
-- Write at least 500 words
-- Open with an orientation paragraph connecting to the series
-- Include substantive main body with clear section flow
-- Every nontrivial claim must trace to the corpus
-- Mark disputed points explicitly with phrases like "scholars dispute..." or "the evidence is fragmentary..."
-- End with a synthesis paragraph preparing the reader for the next essay
-- ${citationInstruction}
-- Do NOT add a References section at the end (bibliography is assembled separately)
-
-Write the complete essay now:`;
+Write 400+ words. Ground claims in sources. Mark disputed points. No references section.`;
 
       const essayContent = await callGemini(apiKey, essayPrompt);
       draftedEssays.push(essayContent);
@@ -461,7 +426,6 @@ Write the complete essay now:`;
         .from("runs")
         .update({ completed_essays: i + 1 })
         .eq("id", runId);
-
     }
 
     // ── Stage 13: Audit ───────────────────────────────────────────────────

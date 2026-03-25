@@ -42,3 +42,5 @@ next-env.d.ts
 check_status.js
 test_db.js
 *.pdf
+create_user.js
+run_sql.js

@@ -10,19 +10,32 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
+  MessageSquare,
+  LogOut,
 } from 'lucide-react';
 import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
+import { useRouter } from 'next/navigation';
 
 const navItems = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
   { href: '/runs/new', label: 'New Run', icon: PlusCircle },
   { href: '/runs', label: 'History', icon: History },
+  { href: '/chat', label: 'Chat', icon: MessageSquare },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/login');
+    router.refresh();
+  };
 
   return (
     <aside
@@ -30,7 +43,7 @@ export function Sidebar() {
         collapsed ? 'w-[72px]' : 'w-[260px]'
       }`}
     >
-      {/* Search / Brand Header */}
+      {/* Brand Header */}
       <div className="flex items-center gap-3 px-5 h-16 border-b border-[#27272a] shrink-0">
         <div className="w-8 h-8 rounded bg-white flex items-center justify-center shrink-0">
           <BookOpen className="w-4 h-4 text-black" />
@@ -72,8 +85,15 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Collapse toggle */}
-      <div className="p-3 border-t border-[#27272a]">
+      {/* Bottom */}
+      <div className="p-3 border-t border-[#27272a] space-y-1">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-neutral-400 hover:text-red-400 hover:bg-neutral-800 transition-all"
+        >
+          <LogOut className="w-[18px] h-[18px] shrink-0" />
+          {!collapsed && <span>Logout</span>}
+        </button>
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="w-full p-2 rounded-md text-neutral-500 hover:text-white hover:bg-neutral-800 transition-all flex items-center justify-center"

@@ -229,9 +229,7 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
     // ── Stage 3: OCR/Parsing via Gemini File API ───────────────────────────
     await updateStage(supabase, runId, 3, "extracting");
 
-    const allExtractedTexts: { docId: string; text: string }[] = [];
-
-    for (const doc of docs) {
+    const extractPromises = docs.map(async (doc) => {
       try {
         // Download the file from Supabase Storage
         const { data: blob, error: dlErr } = await supabase.storage
@@ -262,19 +260,24 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
           mimeType,
         );
 
-        allExtractedTexts.push({ docId: doc.id, text: extractedText });
-
         // Mark document as extracted
         await supabase.from("documents").update({ status: "extracted" }).eq("id", doc.id);
+        
+        return { docId: doc.id, text: extractedText };
       } catch (docErr: any) {
         console.error(`Error processing doc ${doc.filename}:`, docErr.message);
         await supabase
           .from("documents")
           .update({ status: "error", error_message: docErr.message })
           .eq("id", doc.id);
-        // Continue with remaining docs
+        throw docErr;
       }
-    }
+    });
+
+    const results = await Promise.allSettled(extractPromises);
+    const allExtractedTexts = results
+      .filter((r): r is PromiseFulfilledResult<{ docId: string; text: string }> => r.status === "fulfilled")
+      .map((r) => r.value);
 
     if (allExtractedTexts.length === 0) {
       throw new Error("No documents could be extracted. All files failed OCR/parsing.");

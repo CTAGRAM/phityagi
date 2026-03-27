@@ -128,12 +128,19 @@ export default function NewRunPage() {
       }
 
       // 5. Trigger the Background Edge Function Pipeline
-      // The Edge Function reads GEMINI_API_KEY from server-side secrets
-      supabase.functions.invoke('process-run', {
-        body: { runId: run.id }
-      }).catch(err => console.error("Edge function trigger failed:", err));
+      // 3. Trigger robust Next.js API Route for processing (no 150s timeout)
+      const res = await fetch('/api/process-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: run.id })
+      });
+      
+      const resData = await res.json();
+      if (!res.ok || resData.error) {
+        throw new Error(resData.error || 'Failed to trigger pipeline');
+      }
 
-      // 6. Success! Navigate to the timeline/run page
+      // Success
       router.push(`/runs/${run.id}`);
 
     } catch (err: any) {

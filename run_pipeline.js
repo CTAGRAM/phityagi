@@ -65,13 +65,16 @@ async function run() {
     console.log(`Linked ${fileName} to Run.`);
   }
 
-  // 4. Trigger Edge Function
-  console.log("Triggering process-run Edge Function...");
-  const { data: triggerData, error: triggerErr } = await sb.functions.invoke('process-run', {
-    body: { runId: runId }
+  // 4. Trigger Next.js API Route (No 150s timeout)
+  console.log("Triggering Next.js API Route...");
+  const triggerRes = await fetch('http://localhost:3000/api/process-run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runId: runId })
   });
   
-  if (triggerErr) throw triggerErr;
+  const triggerData = await triggerRes.json();
+  if (!triggerRes.ok || triggerData.error) throw new Error(triggerData.error || 'Failed to trigger API');
   console.log("Trigger result:", triggerData);
 
   // 5. Poll Status

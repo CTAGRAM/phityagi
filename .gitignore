@@ -44,3 +44,4 @@ test_db.js
 *.pdf
 create_user.js
 run_sql.js
+run_pipeline.js

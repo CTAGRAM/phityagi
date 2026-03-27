@@ -1,60 +1,8 @@
-// process-run/index.ts — Philosophy Series Engine Pipeline Orchestrator
-// Implements Stages 1–16 using Gemini 2.5 Flash + Gemini File API for real PDF extraction
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
-  let body: { runId?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
-    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
-  }
-
-  const { runId } = body;
-  if (!runId) {
-    return new Response(JSON.stringify({ error: "Missing runId" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
-  }
-
-  // Read API key from server-side secret — never exposed to the client
-  const apiKey = Deno.env.get("GEMINI_API_KEY") ?? "";
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured on server" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
-  }
-
-  // Use service role key to bypass RLS inside the function
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-  );
-
-  // Run the pipeline asynchronously without blocking the caller
-  EdgeRuntime.waitUntil(runPipeline(supabase, runId, apiKey));
-
-  return new Response(JSON.stringify({ success: true, message: "Pipeline started" }), {
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-});
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Vercel function configuration
+export const maxDuration = 300; // 5 minutes max on Vercel Pro, locally unlimited
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -62,52 +10,6 @@ async function updateStage(supabase: any, runId: string, stage: number, status: 
   await supabase.from("runs").update({ current_stage: stage, status }).eq("id", runId);
 }
 
-// Upload bytes to Gemini File API and return the file URI
-async function uploadToGeminiFileAPI(
-  apiKey: string,
-  fileBytes: Uint8Array,
-  mimeType: string,
-  displayName: string,
-): Promise<string> {
-  const uploadRes = await fetch(
-    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": mimeType,
-      },
-      body: new Blob([fileBytes], { type: mimeType }),
-    },
-  );
-
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
-    throw new Error(`Gemini File API upload failed (${uploadRes.status}): ${errText}`);
-  }
-
-  const uploadData = await uploadRes.json();
-  // Wait for file to be ACTIVE
-  let fileUri: string = uploadData.file?.uri;
-  let fileState: string = uploadData.file?.state;
-  let pollCount = 0;
-
-  while (fileState === "PROCESSING" && pollCount < 30) {
-    await delay(2000);
-    const fileId = uploadData.file?.name?.split("/").pop();
-    const pollRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/files/${fileId}?key=${apiKey}`,
-    );
-    const pollData = await pollRes.json();
-    fileState = pollData.state;
-    fileUri = pollData.uri;
-    pollCount++;
-  }
-
-  if (!fileUri) throw new Error("Gemini File URI is empty after upload.");
-  return fileUri;
-}
-
-// Call Gemini generative API with a prompt and optional file (base64 inlineData)
 async function callGemini(
   apiKey: string,
   prompt: string,
@@ -145,7 +47,6 @@ async function callGemini(
   return text;
 }
 
-// Smart chunker: split text into ~1000 char chunks with 100 char overlap
 function chunkText(text: string, chunkSize = 1000, overlap = 100): string[] {
   const chunks: string[] = [];
   let i = 0;
@@ -199,15 +100,11 @@ async function batchEmbed(apiKey: string, texts: string[]): Promise<number[][]> 
   return allEmbeddings;
 }
 
-// ─── Main Pipeline ────────────────────────────────────────────────────────────
-
 async function runPipeline(supabase: any, runId: string, apiKey: string) {
   try {
-    // ── Stage 1: Intake ────────────────────────────────────────────────────
     await updateStage(supabase, runId, 1, "extracting");
     await delay(1000);
 
-    // Fetch run config
     const { data: run, error: runErr } = await supabase
       .from("runs")
       .select("*")
@@ -221,16 +118,13 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
       .eq("run_id", runId);
     if (docsErr || !docs || docs.length === 0) throw new Error("No documents found for this run.");
 
-    // ── Stage 2: Normalisation ─────────────────────────────────────────────
     await updateStage(supabase, runId, 2, "extracting");
     await delay(800);
 
-    // ── Stage 3: OCR/Parsing via Gemini File API ───────────────────────────
     await updateStage(supabase, runId, 3, "extracting");
 
-    const extractPromises = docs.map(async (doc) => {
+    const extractPromises = docs.map(async (doc: any) => {
       try {
-        // Download the file from Supabase Storage
         const { data: blob, error: dlErr } = await supabase.storage
           .from("corpus_documents")
           .download(doc.file_path);
@@ -248,25 +142,25 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
         };
         const mimeType = mimeMap[ext] || "application/octet-stream";
 
-        // Convert fileBytes to base64 for inlineData
-        // Deno provides a fast btoa for Uint8Array: btoa(String.fromCharCode(...fileBytes)) however 
-        // for large arrays it throws call stack size exceeded. We can use a custom function or Deno built-in.
-        // Deno has a built in base64 encoder in std/encoding. But we can use chunked fromCharCode.
-        const chunk = 8192;
-        let base64String = "";
-        for (let i = 0; i < fileBytes.length; i += chunk) {
-          base64String += String.fromCharCode.apply(null, Array.from(fileBytes.subarray(i, i + chunk)));
+        let fileBase64 = '';
+        const isClientSideFile = typeof Buffer !== 'undefined';
+        if (isClientSideFile) {
+           fileBase64 = Buffer.from(fileBytes).toString('base64');
+        } else {
+           const chunk = 8192;
+           let base64String = "";
+           for (let i = 0; i < fileBytes.length; i += chunk) {
+             base64String += String.fromCharCode.apply(null, Array.from(fileBytes.subarray(i, i + chunk)));
+           }
+           fileBase64 = btoa(base64String);
         }
-        const fileBase64 = btoa(base64String);
 
-        // Extract full text content using Gemini Vision (inlineData)
         const extractedText = await callGemini(
           apiKey,
           `You are a scholarly text extraction assistant. Extract ALL text content from this document verbatim, preserving paragraph structure, headings, footnotes, and section markers. Do not summarize or skip any content. Output plain text only.`,
           { mimeType, data: fileBase64 },
         );
 
-        // Mark document as extracted
         await supabase.from("documents").update({ status: "extracted" }).eq("id", doc.id);
         
         return { docId: doc.id, text: extractedText };
@@ -283,24 +177,19 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
     const results = await Promise.allSettled(extractPromises);
     const allExtractedTexts = results
       .filter((r): r is PromiseFulfilledResult<{ docId: string; text: string }> => r.status === "fulfilled")
-      .map((r) => r.value);
+      .map((r: any) => r.value);
 
     if (allExtractedTexts.length === 0) {
       throw new Error("No documents could be extracted. All files failed OCR/parsing.");
     }
 
-    // Combine all texts for downstream use
     const combinedText = allExtractedTexts.map((d) => d.text).join("\n\n---DOCUMENT BREAK---\n\n");
 
-    // ── Stage 4: Chunking & Indexing ───────────────────────────────────────
     await updateStage(supabase, runId, 4, "extracting");
 
     for (const { docId, text } of allExtractedTexts) {
       const chunks = chunkText(text, 1200, 150);
-      
-      // We process a max of 200 chunks per document to avoid hitting rate limits for large files in MVP
       const targetChunks = chunks.slice(0, 200);
-      
       const chunkEmbeddings = await batchEmbed(apiKey, targetChunks);
 
       const chunkInserts = targetChunks.map((content, idx) => ({
@@ -312,22 +201,21 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
       }));
 
       if (chunkInserts.length > 0) {
-        const { error: chunkErr } = await supabase.from("chunks").insert(chunkInserts);
-        if (chunkErr) console.error("Chunk insert error:", chunkErr.message);
+         // Insert in batches of 100 to avoid PostgREST limits
+         for (let i = 0; i < chunkInserts.length; i += 100) {
+            const { error: chunkErr } = await supabase.from("chunks").insert(chunkInserts.slice(i, i + 100));
+            if (chunkErr) console.error("Chunk insert error:", chunkErr.message);
+         }
       }
     }
 
-    // ── Stage 5: Corpus Classification ────────────────────────────────────
     await updateStage(supabase, runId, 5, "indexing");
-
-    // ── Stage 6: Scope Resolution ──────────────────────────────────────────
     await updateStage(supabase, runId, 6, "indexing");
     const scopeStatement = await callGemini(
       apiKey,
       `You are a scholarly philosophy analyst. Based on the following corpus content, write a concise scope statement (3-5 sentences) defining what "${run.target_philosophy}" means as covered by these texts. Be precise about temporal, doctrinal, and geographical scope.\n\nCorpus excerpt (first 2000 chars):\n${combinedText.slice(0, 2000)}`,
     );
 
-    // ── Stage 7: Series Blueprint Generation ──────────────────────────────
     await updateStage(supabase, runId, 7, "indexing");
 
     const blueprintRaw = await callGemini(
@@ -345,7 +233,6 @@ Return a JSON object with:
       "scope": "2-3 sentence description of what this essay covers",
       "depends_on": []
     }
-    // ... more essays
   ]
 }
 
@@ -360,7 +247,6 @@ Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
     try {
       blueprint = JSON.parse(blueprintRaw);
     } catch {
-      // If JSON parse fails, create a fallback blueprint
       blueprint = {
         series_title: `${run.target_philosophy}: A Philosophical Series`,
         essay_count: 3,
@@ -372,22 +258,14 @@ Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
       };
     }
 
-    const essayPlan = (blueprint.essays || []).slice(0, 3); // Hard cap at 3 to fit within Edge Function timeout
+    const essayPlan = (blueprint.essays || []).slice(0, 3);
     const essayCount = essayPlan.length;
 
-    // ── Stage 8: Coverage Audit ────────────────────────────────────────────
     await updateStage(supabase, runId, 8, "indexing");
-
-    // ── Stage 9: Evidence Extraction ──────────────────────────────────────
     await updateStage(supabase, runId, 9, "indexing");
-
-    // ── Stage 10: Concept Graph ────────────────────────────────────────────
     await updateStage(supabase, runId, 10, "indexing");
-
-    // ── Stage 11: Series Memory ────────────────────────────────────────────
     await updateStage(supabase, runId, 11, "indexing");
-
-    // ── Stage 12: Drafting ────────────────────────────────────────────────
+    
     await updateStage(supabase, runId, 12, "drafting");
     await supabase
       .from("runs")
@@ -436,16 +314,10 @@ Write 400+ words. Ground claims in sources. Mark disputed points. No references 
         .eq("id", runId);
     }
 
-    // ── Stage 13: Audit ───────────────────────────────────────────────────
     await updateStage(supabase, runId, 13, "drafting");
-
-    // ── Stage 14: Revision (skip in MVP, mark done) ───────────────────────
     await updateStage(supabase, runId, 14, "drafting");
-
-    // ── Stage 15: Continuity Reconciliation ───────────────────────────────
     await updateStage(supabase, runId, 15, "drafting");
-
-    // ── Stage 16: Final Packaging ─────────────────────────────────────────
+    
     await updateStage(supabase, runId, 16, "completed");
     await supabase.from("runs").update({ status: "completed", current_stage: 16 }).eq("id", runId);
 
@@ -456,5 +328,36 @@ Write 400+ words. Ground claims in sources. Mark disputed points. No references 
       .from("runs")
       .update({ status: "failed", error_message: err.message })
       .eq("id", runId);
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const { runId } = await req.json();
+
+    if (!runId) {
+      return NextResponse.json({ error: "Missing runId" }, { status: 400 });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "GEMINI_API_KEY not configured on server" }, { status: 500 });
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Need service role to bypass RLS
+    
+    if (!supabaseUrl || !supabaseKey) {
+        return NextResponse.json({ error: "Supabase generic configuration missing" }, { status: 500 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Run pipeline in the background so request can complete
+    runPipeline(supabase, runId, apiKey).catch(console.error);
+
+    return NextResponse.json({ success: true, message: "Pipeline started in Next.js backend" });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

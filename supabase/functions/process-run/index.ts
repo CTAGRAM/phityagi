@@ -107,17 +107,16 @@ async function uploadToGeminiFileAPI(
   return fileUri;
 }
 
-// Call Gemini generative API with a prompt and optional file
+// Call Gemini generative API with a prompt and optional file (base64 inlineData)
 async function callGemini(
   apiKey: string,
   prompt: string,
-  fileUri?: string,
-  mimeType?: string,
+  inlineData?: { mimeType: string; data: string },
   jsonMode?: boolean,
 ): Promise<string> {
   const parts: any[] = [];
-  if (fileUri && mimeType) {
-    parts.push({ fileData: { mimeType: mimeType, fileUri: fileUri } });
+  if (inlineData) {
+    parts.push({ inlineData });
   }
   parts.push({ text: prompt });
 
@@ -249,15 +248,22 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
         };
         const mimeType = mimeMap[ext] || "application/octet-stream";
 
-        // Upload to Gemini File API
-        const fileUri = await uploadToGeminiFileAPI(apiKey, fileBytes, mimeType, doc.filename);
+        // Convert fileBytes to base64 for inlineData
+        // Deno provides a fast btoa for Uint8Array: btoa(String.fromCharCode(...fileBytes)) however 
+        // for large arrays it throws call stack size exceeded. We can use a custom function or Deno built-in.
+        // Deno has a built in base64 encoder in std/encoding. But we can use chunked fromCharCode.
+        const chunk = 8192;
+        let base64String = "";
+        for (let i = 0; i < fileBytes.length; i += chunk) {
+          base64String += String.fromCharCode.apply(null, Array.from(fileBytes.subarray(i, i + chunk)));
+        }
+        const fileBase64 = btoa(base64String);
 
-        // Extract full text content using Gemini Vision
+        // Extract full text content using Gemini Vision (inlineData)
         const extractedText = await callGemini(
           apiKey,
           `You are a scholarly text extraction assistant. Extract ALL text content from this document verbatim, preserving paragraph structure, headings, footnotes, and section markers. Do not summarize or skip any content. Output plain text only.`,
-          fileUri,
-          mimeType,
+          { mimeType, data: fileBase64 },
         );
 
         // Mark document as extracted
@@ -346,7 +352,6 @@ Return a JSON object with:
 The essays should form a coherent progression: foundational first, then doctrinal, then debates, then synthesis.
 
 Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
-      undefined,
       undefined,
       true,
     );

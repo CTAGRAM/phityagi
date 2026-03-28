@@ -102,7 +102,7 @@ export default function ChatPage() {
         id: activeSessionId,
         title: question.length > 30 ? question.slice(0, 30) + '...' : question,
         updatedAt: Date.now(),
-        messages: [{ role: 'user', content: question }]
+        messages: [{ role: 'user' as const, content: question }]
       };
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(activeSessionId);
@@ -113,7 +113,7 @@ export default function ChatPage() {
           return {
             ...s,
             updatedAt: Date.now(),
-            messages: [...s.messages, { role: 'user', content: question }]
+            messages: [...s.messages, { role: 'user' as const, content: question }]
           };
         }
         return s;
@@ -139,7 +139,7 @@ export default function ChatPage() {
             messages: [
               ...s.messages, 
               { 
-                role: 'assistant', 
+                role: 'assistant' as const, 
                 content: data.answer || 'No answer generated.', 
                 sources: data.sources, 
                 sourceCount: data.sourceCount 
@@ -156,7 +156,7 @@ export default function ChatPage() {
              ...s,
              messages: [
                ...s.messages, 
-               { role: 'assistant', content: `Error: ${err.message || 'Something went wrong.'}` }
+               { role: 'assistant' as const, content: `Error: ${err.message || 'Something went wrong.'}` }
              ]
            };
         }

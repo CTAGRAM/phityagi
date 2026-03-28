@@ -163,11 +163,12 @@ export default function ChatPage() {
                       </button>
                       {showSources === i && (
                         <div className="mt-2 space-y-2">
-                          {msg.sources.map((src, j) => (
+                          {msg.sources.map((src: any, j: number) => (
                             <div key={j} className="p-2.5 bg-neutral-800/50 rounded-lg text-xs text-neutral-400 border border-neutral-800">
                               <span className="text-violet-400 font-medium">[Source {j + 1}]</span>{' '}
-                              <span className="text-neutral-500">({(src.similarity * 100).toFixed(0)}% match)</span>
-                              <p className="mt-1 line-clamp-3">{src.content}</p>
+                              <span className="text-neutral-500 font-semibold uppercase tracking-wider text-[10px]">({src.book_name || 'Philosophy Engine'})</span>{' '}
+                              <span className="text-neutral-600">({(src.similarity * 100).toFixed(0)}% match)</span>
+                              <p className="mt-1 line-clamp-3 leading-relaxed">{src.content}</p>
                             </div>
                           ))}
                         </div>

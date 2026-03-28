@@ -78,30 +78,35 @@ Deno.serve(async (req) => {
 
     if (searchErr) {
       console.error("Search error:", searchErr.message);
-      // Fallback: try raw text search
     }
 
+    // Fetch run names to differentiate sources
+    const runIds = Array.from(new Set(chunks?.map((c: any) => c.run_id).filter(Boolean)));
+    const { data: runs } = await supabase.from('runs').select('id, target_philosophy').in('id', runIds);
+    const runMap = new Map(runs?.map((r: any) => [r.id, r.target_philosophy]));
+
     const context = (chunks || [])
-      .map((c: any, i: number) => `[Source ${i + 1}]: ${c.content}`)
+      .map((c: any, i: number) => `[Source ${i + 1} from book "${runMap.get(c.run_id) || 'Unknown Book'}"]: ${c.content}`)
       .join("\n\n");
 
-    // 3. Also fetch any completed essays for richer context
+    // 3. Fetch generated essays metadata to know what has been written
     let essayContext = "";
     if (userId) {
       const { data: essays } = await supabase
         .from("essays")
-        .select("title, content")
+        .select("title, essay_number, runs!inner(target_philosophy)")
         .order("created_at", { ascending: false })
-        .limit(3);
+        .limit(30);
       if (essays && essays.length > 0) {
-        essayContext = essays
-          .map((e: any) => `[Essay: ${e.title}]\n${e.content.slice(0, 500)}`)
-          .join("\n\n");
+        essayContext = "Here is the table of contents for all philosophical books generated so far:\n" + essays
+          .map((e: any) => `- Book: "${e.runs?.target_philosophy}" | Chapter ${e.essay_number}: ${e.title}`)
+          .join("\n");
       }
     }
 
     // 4. Generate answer using Gemini with retrieved context
-    const prompt = `You are a scholarly philosophy assistant with deep expertise. Answer the user's question using ONLY the source material and essays provided below. If the sources don't contain enough information, say so honestly.
+    const prompt = `You are a scholarly philosophy assistant with deep expertise. Answer the user's question using ONLY the source material and essay context provided below. If the sources don't contain enough information, say so honestly.
+When citing information, ALWAYS mention the book/run name it came from to differentiate between multiple philosophical texts the user has analyzed.
 
 Use rich markdown formatting:
 - Use **bold** for key terms
@@ -109,7 +114,7 @@ Use rich markdown formatting:
 - Use LaTeX for any mathematical or logical notation: $inline$ or $$block$$
 - Use > blockquotes for direct quotations from sources
 - Use numbered lists for structured arguments
-- Cite sources as [Source N] when referencing specific chunks
+- Cite sources as [Source N from "Book Name"] when referencing specific chunks
 
 SOURCE MATERIAL:
 ${context || "(No matching sources found in the corpus.)"}
@@ -143,6 +148,7 @@ Provide a thorough, well-cited answer:`;
       content: c.content?.slice(0, 200),
       similarity: c.similarity,
       document_id: c.document_id,
+      book_name: runMap.get(c.run_id) || 'Unknown Book',
     }));
 
     return new Response(

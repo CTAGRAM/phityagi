@@ -81,13 +81,26 @@ export default function NewRunPage() {
       
       const userId = session?.user.id;
       if (!userId) throw new Error('Could not secure a user session.');
+      
+      let finalTargetName = targetName.trim();
+      const { data: existingRun } = await supabase
+        .from('runs')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('target_philosophy', finalTargetName)
+        .maybeSingle();
+        
+      if (existingRun) {
+        const timestamp = new Date().toISOString().replace(/T/, ' ').replace(/\..+/, '');
+        finalTargetName = `${finalTargetName} (${timestamp})`;
+      }
 
       // 3. Create the Run
       const { data: run, error: runError } = await supabase
         .from('runs')
         .insert({
           user_id: userId,
-          target_philosophy: targetName.trim(),
+          target_philosophy: finalTargetName,
           tone_preset: tone === 'custom' ? 'custom' : tone,
           custom_tone: tone === 'custom' ? customTone : null,
           citation_style: citationStyle,

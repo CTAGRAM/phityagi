@@ -15,6 +15,7 @@ async function callGemini(
   prompt: string,
   inlineData?: { mimeType: string; data: string },
   jsonMode?: boolean,
+  retries = 3
 ): Promise<string> {
   const parts: any[] = [];
   if (inlineData) {
@@ -29,22 +30,46 @@ async function callGemini(
     body.generationConfig = { responseMimeType: "application/json" };
   }
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  let lastError = null;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // Add custom timeout controller set to 12 minutes for massive generations
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12 * 60 * 1000);
 
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    console.error("Gemini returned empty text. Full response:", JSON.stringify(data));
-    throw new Error(`Gemini empty response: ${JSON.stringify(data)}`);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal
+        },
+      );
+      
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status} ${await res.text()}`);
+      }
+
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        console.error(`Gemini returned empty text (Attempt ${attempt}). Full response:`, JSON.stringify(data));
+        throw new Error(`Gemini empty response: ${JSON.stringify(data)}`);
+      }
+      return text;
+    } catch (error: any) {
+      lastError = error;
+      console.error(`Gemini call failed (Attempt ${attempt}/${retries}):`, error.message);
+      if (attempt < retries) {
+        console.log(`Retrying in 15 seconds...`);
+        await delay(15000);
+      }
+    }
   }
-  return text;
+  throw lastError;
 }
 
 function chunkText(text: string, chunkSize = 1000, overlap = 100): string[] {
@@ -211,34 +236,47 @@ async function runPipeline(supabase: any, runId: string, apiKey: string) {
 
     await updateStage(supabase, runId, 5, "indexing");
     await updateStage(supabase, runId, 6, "indexing");
+
+    // Use much more of the corpus for planning — up to 30K chars for blueprint
+    const blueprintCorpus = combinedText.slice(0, 30000);
+
     const scopeStatement = await callGemini(
       apiKey,
-      `You are a scholarly philosophy analyst. Based on the following corpus content, write a concise scope statement (3-5 sentences) defining what "${run.target_philosophy}" means as covered by these texts. Be precise about temporal, doctrinal, and geographical scope.\n\nCorpus excerpt (first 2000 chars):\n${combinedText.slice(0, 2000)}`,
+      `You are a scholarly philosophy analyst. Based on the following corpus content, write a detailed scope statement (5-8 sentences) defining what "${run.target_philosophy}" means as covered by these texts. Enumerate ALL the major topics, categories, entities, arguments, and philosophical positions mentioned. Be precise about temporal, doctrinal, and geographical scope. Do not leave out any topic area.\n\nFull corpus:\n${blueprintCorpus}`,
     );
 
     await updateStage(supabase, runId, 7, "indexing");
 
+    // Blueprint: plan 5-7 chapters that are deeply granular so every topic is covered
     const blueprintRaw = await callGemini(
       apiKey,
-      `You are a scholarly philosophy series planner. Based on the corpus below about "${run.target_philosophy}", generate a numbered essay series plan.
+      `You are a scholarly philosophy series planner with the goal of EXHAUSTIVE COVERAGE. You must ensure that EVERY SINGLE concept, category, argument, example, definition, verse, sutra, and philosophical position present in the corpus is assigned to at least one chapter.
+
+Based on the corpus below about "${run.target_philosophy}", generate a comprehensive chapter plan.
+
+CRITICAL RULES:
+1. Generate between 5 and 7 chapters — enough to cover EVERY topic in the source material
+2. Each chapter should focus on a coherent thematic unit
+3. Together, all chapters must cover 100% of the source material — DO NOT leave anything uncovered
+4. For each chapter, list the SPECIFIC topics, categories, terms, and concepts it must address
+5. The chapters should form a logical progression: foundational → categorical → doctrinal → epistemological → metaphysical → debates → synthesis
 
 Return a JSON object with:
 {
-  "series_title": "string",
-  "essay_count": 3,
+  "series_title": "string — the title for the entire series",
+  "essay_count": <number 5-7>,
   "essays": [
     {
       "number": 1,
-      "title": "string",
-      "scope": "2-3 sentence description of what this essay covers",
+      "title": "string — precise, descriptive chapter title",
+      "scope": "Detailed 3-5 sentence description of EVERYTHING this chapter must cover. List specific concepts, categories, arguments, and Sanskrit/philosophical terms.",
+      "key_topics": ["topic1", "topic2", "topic3"],
       "depends_on": []
     }
   ]
 }
 
-The essays should form a coherent progression: foundational first, then doctrinal, then debates, then synthesis.
-
-Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
+Source corpus (read every word carefully):\n${blueprintCorpus}`,
       undefined,
       true,
     );
@@ -248,17 +286,19 @@ Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
       blueprint = JSON.parse(blueprintRaw);
     } catch {
       blueprint = {
-        series_title: `${run.target_philosophy}: A Philosophical Series`,
-        essay_count: 3,
+        series_title: `${run.target_philosophy}: A Comprehensive Philosophical Study`,
+        essay_count: 5,
         essays: [
-          { number: 1, title: `Foundations of ${run.target_philosophy}`, scope: "Overview, sources, and scope of the tradition.", depends_on: [] },
-          { number: 2, title: `Core Doctrines and Epistemology`, scope: "The main philosophical claims and theory of knowledge.", depends_on: [1] },
-          { number: 3, title: `Legacy, Reception, and Modern Relevance`, scope: "Historical influence, practical implications, and contemporary significance.", depends_on: [1, 2] },
+          { number: 1, title: `Foundations and Historical Context of ${run.target_philosophy}`, scope: "Complete overview, historical origins, key thinkers, foundational texts, and the philosophical landscape.", key_topics: ["origins", "key_thinkers", "foundational_texts"], depends_on: [] },
+          { number: 2, title: `Ontological Categories and Metaphysical Framework`, scope: "Every metaphysical category, substance, quality, action, and their detailed enumeration.", key_topics: ["categories", "substances", "qualities", "actions"], depends_on: [1] },
+          { number: 3, title: `Epistemological Methods and Theory of Knowledge`, scope: "All means of valid knowledge, perception, inference, testimony, and logical methods.", key_topics: ["pramana", "perception", "inference", "testimony"], depends_on: [1, 2] },
+          { number: 4, title: `Detailed Analysis of Core Doctrines`, scope: "Deep dive into each major doctrinal position, arguments, counter-arguments, and examples.", key_topics: ["core_doctrines", "arguments", "counter_arguments"], depends_on: [1, 2, 3] },
+          { number: 5, title: `Synthesis, Legacy, and Complete Philosophical Significance`, scope: "How all concepts interconnect, historical reception, modern relevance, and a comprehensive summary.", key_topics: ["synthesis", "legacy", "modern_relevance"], depends_on: [1, 2, 3, 4] },
         ],
       };
     }
 
-    const essayPlan = (blueprint.essays || []).slice(0, 3);
+    const essayPlan = (blueprint.essays || []).slice(0, 7);
     const essayCount = essayPlan.length;
 
     await updateStage(supabase, runId, 8, "indexing");
@@ -272,29 +312,54 @@ Corpus excerpt:\n${combinedText.slice(0, 3000)}`,
       .update({ total_essays: essayCount, completed_essays: 0 })
       .eq("id", runId);
 
-    const corpusExcerpt = combinedText.slice(0, 1500);
+    // Pass the FULL corpus to each essay — Gemini 2.5 Flash supports up to ~1M tokens
+    // We split the corpus into segments so each chapter gets relevant sections
+    const fullCorpus = combinedText.slice(0, 100000); // up to 100K chars (~25K words)
+    const corpusSegmentSize = Math.ceil(fullCorpus.length / essayCount);
+    
     const draftedEssays: string[] = [];
 
     for (let i = 0; i < essayPlan.length; i++) {
       const essayDef = essayPlan[i];
-      const prevSummary = draftedEssays.length > 0 ? draftedEssays[draftedEssays.length - 1].slice(0, 300) : "";
+      const prevSummary = draftedEssays.length > 0 ? draftedEssays[draftedEssays.length - 1].slice(0, 500) : "";
 
       const toneMap: Record<string, string> = {
-        scholarly: "academic prose", analytical: "analytical style",
-        literary: "literary style", pedagogical: "pedagogical style",
-        explanatory: "explanatory style", custom: run.custom_tone || "custom style",
+        scholarly: "rigorous academic prose with precise philosophical terminology",
+        analytical: "deeply analytical style with logical rigor and systematic argumentation",
+        literary: "rich literary style combining philosophical depth with eloquent expression",
+        pedagogical: "thorough pedagogical style with exhaustive explanations and illustrative examples",
+        explanatory: "comprehensive explanatory style ensuring complete understanding of every concept",
+        custom: run.custom_tone || "thorough scholarly style",
       };
 
-      const essayPrompt = `Write Essay ${essayDef.number}/${essayCount} titled "${essayDef.title}" for a series on "${run.target_philosophy}".
-Scope: ${essayDef.scope}
-Style: ${toneMap[run.tone_preset] || "academic prose"}
-Citations: ${run.citation_style || "inline"}
-${prevSummary ? `Previous essay ended with: ${prevSummary}` : "This is the first essay."}
+      // Give each chapter the FULL corpus plus its focused segment for emphasis
+      const focusedSegment = fullCorpus.slice(i * corpusSegmentSize, (i + 1) * corpusSegmentSize + 2000);
+      
+      const essayPrompt = `You are writing Chapter ${essayDef.number} of ${essayCount} titled "${essayDef.title}" for a definitive philosophical study on "${run.target_philosophy}".
 
-Source material:
-${corpusExcerpt}
+## ABSOLUTE REQUIREMENTS — READ CAREFULLY:
+1. **EXHAUSTIVE COVERAGE**: This chapter MUST capture EVERY SINGLE piece of information from the source material relevant to its scope. Do NOT summarize — ELABORATE on every concept, every term, every argument, every verse, every category, every definition.
+2. **NO INFORMATION LEFT BEHIND**: Every concept, Sanskrit/philosophical term, enumeration, classification, argument, counter-argument, example, analogy, and doctrinal position within the scope MUST be included and explained in full detail.
+3. **DEPTH OVER BREVITY**: Write at minimum 2000 words. There is no maximum. If the source material contains extensive content for this chapter's scope, write 3000-5000+ words.
+4. **PRESERVE ORIGINAL STRUCTURE**: If the source material lists categories, enumerate ALL of them. If it defines terms, define ALL of them. If it presents arguments, present ALL of them with their premises and conclusions.
+5. **SCHOLARLY PRECISION**: Use proper transliterations of all Sanskrit/philosophical terms. Include original terms in parentheses when translating.
+6. **FORMAT**: Use proper Markdown with ## headings, ### sub-headings, bullet lists for enumerations, and > blockquotes for important definitions or original verses.
 
-Write 400+ words. Ground claims in sources. Mark disputed points. No references section.`;
+## Chapter Scope:
+${essayDef.scope}
+${essayDef.key_topics ? `\nKey topics to cover: ${essayDef.key_topics.join(', ')}` : ''}
+
+## Style: ${toneMap[run.tone_preset] || "rigorous academic prose"}
+## Citations: ${run.citation_style || "inline"}
+${prevSummary ? `\n## Context from previous chapter:\n${prevSummary}` : "This is the opening chapter."}
+
+## PRIMARY SOURCE MATERIAL (extract EVERY relevant detail):
+${focusedSegment}
+
+## FULL CORPUS CONTEXT (for cross-references and completeness):
+${fullCorpus.slice(0, 50000)}
+
+REMEMBER: The reader should be able to reconstruct the ENTIRE content of the original source material from your chapters alone. Leave NOTHING out. Every verse, every definition, every classification, every argument must appear.`;
 
       const essayContent = await callGemini(apiKey, essayPrompt);
       draftedEssays.push(essayContent);

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   PlusCircle,
-  History,
+  Library,
   Settings,
   BookOpen,
   ChevronLeft,
@@ -20,7 +20,7 @@ import { useRouter } from 'next/navigation';
 const navItems = [
   { href: '/', label: 'Overview', icon: LayoutDashboard },
   { href: '/runs/new', label: 'New Run', icon: PlusCircle },
-  { href: '/runs', label: 'History', icon: History },
+  { href: '/runs', label: 'Library', icon: Library },
   { href: '/chat', label: 'Chat', icon: MessageSquare },
   { href: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -51,7 +51,7 @@ export function Sidebar() {
         {!collapsed && (
           <div className="overflow-hidden flex-1 fade-in">
             <h1 className="text-sm font-semibold text-white tracking-tight whitespace-nowrap">
-              Engine
+              GNOSIS
             </h1>
           </div>
         )}

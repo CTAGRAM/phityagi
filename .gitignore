@@ -45,3 +45,10 @@ test_db.js
 create_user.js
 run_sql.js
 run_pipeline.js
+
+# Python
+__pycache__/
+*.pyc
+backend/venv/
+backend/backend.log
+backend/nohup.out

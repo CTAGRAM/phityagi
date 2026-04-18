@@ -7,6 +7,12 @@ import {
 } from 'lucide-react';
 import { TONE_PRESETS, FILE_EXTENSIONS, CITATION_STYLES } from '@/lib/constants';
 
+const INTELLECTUAL_DOMAINS = [
+  'Philosophy', 'Religion', 'Literature', 'History', 
+  'Science', 'Law', 'Economics', 'Art', 
+  'Language', 'Psychology', 'Politics', 'Technology'
+];
+
 interface UploadedFile {
   file: File;
   id: string;
@@ -16,6 +22,7 @@ interface UploadedFile {
 export default function NewRunPage() {
   const router = useRouter();
   const [targetName, setTargetName] = useState('');
+  const [domain, setDomain] = useState('Philosophy');
   const [tone, setTone] = useState('scholarly');
   const [customTone, setCustomTone] = useState('');
   const [citationStyle, setCitationStyle] = useState('inline');
@@ -101,6 +108,7 @@ export default function NewRunPage() {
         .insert({
           user_id: userId,
           target_philosophy: finalTargetName,
+          domain_tag: domain,
           tone_preset: tone === 'custom' ? 'custom' : tone,
           custom_tone: tone === 'custom' ? customTone : null,
           citation_style: citationStyle,
@@ -140,12 +148,15 @@ export default function NewRunPage() {
         if (docError) throw new Error('Failed to register DB document: ' + docError.message);
       }
 
-      // 5. Trigger the Background Edge Function Pipeline
-      // 3. Trigger robust Next.js API Route for processing (no 150s timeout)
-      const res = await fetch('/api/process-run', {
+      // 5. Trigger the Python GNOSIS Backend (LangGraph)
+      const res = await fetch('http://127.0.0.1:8000/api/v1/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: run.id })
+        body: JSON.stringify({ 
+          session_label: run.id,
+          file_path: "handled_via_supabase_db",
+          domain_tag: domain
+        })
       });
       
       const resData = await res.json();
@@ -185,22 +196,40 @@ export default function NewRunPage() {
       {/* Form Sequence */}
       <div className="space-y-8 animate-fade-in-up" style={{ animationDelay: '0.1s' }}>
         
-        {/* Step 1: Target Name */}
+        {/* Step 1: Target Subject & Domain */}
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-medium text-white flex items-center gap-2">
               <span className="w-5 h-5 rounded flex items-center justify-center bg-white text-black text-[10px] font-bold">1</span>
-              Target Philosophy
+              Subject & Domain
             </h2>
           </div>
-          <div className="relative">
-            <input
-              type="text"
-              value={targetName}
-              onChange={(e) => setTargetName(e.target.value)}
-              placeholder="e.g., Stoicism, Advaita Vedānta, Epictetus..."
-              className="w-full px-4 py-3 rounded-md bg-black border border-neutral-800 focus:border-neutral-500 focus:outline-none text-sm text-white placeholder:text-neutral-600 transition-colors"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="relative">
+              <label className="block text-[11px] font-medium text-neutral-500 mb-1.5 uppercase tracking-wider">Target Subject</label>
+              <input
+                type="text"
+                value={targetName}
+                onChange={(e) => setTargetName(e.target.value)}
+                placeholder="e.g., Stoicism, Quantum Mechanics..."
+                className="w-full px-4 py-3 rounded-md bg-black border border-neutral-800 focus:border-neutral-500 focus:outline-none text-sm text-white placeholder:text-neutral-600 transition-colors"
+              />
+            </div>
+            <div className="relative">
+              <label className="block text-[11px] font-medium text-neutral-500 mb-1.5 uppercase tracking-wider">Intellectual Domain</label>
+              <div className="relative">
+                <select
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  className="w-full px-4 py-3 rounded-md bg-black border border-neutral-800 focus:border-neutral-500 focus:outline-none text-sm text-white appearance-none transition-colors"
+                >
+                  {INTELLECTUAL_DOMAINS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
+              </div>
+            </div>
           </div>
         </section>
 

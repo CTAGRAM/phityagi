@@ -222,8 +222,8 @@ export default function ChatPage() {
               <Sparkles className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-white">Corpus Chat</h1>
-              <p className="text-xs text-neutral-500">RAG-powered Q&A across your philosophical series</p>
+              <h1 className="text-lg font-semibold text-white">GNOSIS Chat</h1>
+              <p className="text-xs text-neutral-500">Semantic search across 12 intellectual domains — philosophy, religion, science, psychology & more</p>
             </div>
           </div>
         </div>
@@ -235,16 +235,16 @@ export default function ChatPage() {
               <div className="w-16 h-16 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-center mb-6">
                 <BookOpen className="w-8 h-8 text-neutral-600" />
               </div>
-              <h2 className="text-xl font-semibold text-white mb-2">Ask your corpus anything</h2>
+              <h2 className="text-xl font-semibold text-white mb-2">Ask across your entire library</h2>
               <p className="text-neutral-500 text-sm max-w-md mb-8">
-                Your questions are answered using semantic search across all uploaded documents and generated essays. 
+                Semantic search runs across all domains — philosophy, religion, literature, history, science, law, economics, art, language, psychology, politics, and technology. Cross-domain connections are surfaced automatically.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full">
                 {[
+                  'How does Stoic philosophy relate to cognitive behavioral psychology?',
+                  'Compare economic theories of Adam Smith with Kautilya\'s Arthashastra',
                   'What are the six padarthas in Vaisheshika?',
-                  'Explain the concept of dravya',
-                  'How does Prasastapada define samanya?',
-                  'What is the relation between guna and dravya?',
+                  'How does quantum mechanics challenge classical determinism in philosophy?',
                 ].map((q) => (
                   <button
                     key={q}
@@ -381,10 +381,54 @@ export default function ChatPage() {
                 </button>
               </div>
             </div>
-            <p className="text-center text-[11px] font-medium text-neutral-500 mt-3 tracking-wide flex items-center justify-center gap-1">
-              <Sparkles className="w-3 h-3 text-violet-400/70" />
-              Engine architecture guarantees semantic traceability. Hallucinations are strictly minimized.
-            </p>
+            {/* Action Bar */}
+            <div className="flex items-center justify-between mt-3">
+              <button
+                type="button"
+                onClick={async () => {
+                   if (!input.trim() || loading) return;
+                   const topic = input.trim();
+                   setInput('');
+                   setLoading(true);
+                   
+                   try {
+                     const res = await fetch('http://127.0.0.1:8000/api/v1/research_topic', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ topic, run_id: currentSessionId || 'chat_session' })
+                     });
+                     const data = await res.json();
+                     
+                     if (!res.ok) throw new Error(data.detail || 'Research failed');
+                     
+                     const answerText = `**GNOSIS Drill Deeper Research Results on "${data.topic}"**:\n\n${data.answer}\n\n*Sources:* ${data.sources.map((s:any) => `[${s.title}](${s.url})`).join(', ')}`;
+                     
+                     setSessions(prev => prev.map(s => {
+                       if (s.id === currentSessionId) {
+                         return { ...s, messages: [...s.messages,
+                            { role: 'user', content: `/research ${topic}` },
+                            { role: 'assistant', content: answerText }
+                         ]};
+                       }
+                       return s;
+                     }));
+                   } catch (e: any) {
+                     alert("Research Error: " + e.message);
+                   } finally {
+                     setLoading(false);
+                   }
+                }}
+                disabled={loading || !input.trim() || !currentSessionId}
+                className="text-[11px] font-medium text-neutral-400 hover:text-violet-400 border border-neutral-800 hover:border-violet-500/30 bg-neutral-900/50 px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <Sparkles className="w-3 h-3" />
+                Drill Deeper (Live Web Research)
+              </button>
+              <p className="text-[11px] font-medium text-neutral-500 tracking-wide flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-violet-400/70" />
+                Semantic traceability guaranteed.
+              </p>
+            </div>
           </form>
         </div>
       </div>

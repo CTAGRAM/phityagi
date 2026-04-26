@@ -1,20 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { History, Clock, BookOpen, ArrowRight, CheckCircle2, XCircle, Loader2, Sparkles, FolderOpen } from 'lucide-react';
+import { History, Clock, BookOpen, ArrowRight, CheckCircle2, XCircle, Loader2, Sparkles, FolderOpen, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 const INTELLECTUAL_DOMAINS = [
   'All', 'Philosophy', 'Religion', 'Literature', 'History', 
   'Science', 'Law', 'Economics', 'Art', 
-  'Language', 'Psychology', 'Politics', 'Technology'
+  'Language', 'Psychology', 'Politics', 'Technology',
+  'Mathematics & Logic', 'Ethics', 'Medicine theory and practice'
 ];
 
 interface Run {
   id: string;
   target_philosophy: string;
   domain_tag: string | null;
+  domain_tags: string[];
   tone_preset: string;
   status: string;
   total_essays: number | null;
@@ -91,12 +93,42 @@ export default function RunHistoryPage() {
     return `${days}d ago`;
   };
 
+  const deleteBook = async (runId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!confirm('Are you sure you want to permanently delete this book and its corpus?')) return;
+    
+    const supabase = createClient();
+    try {
+      // 1. Delete from storage
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: files } = await supabase.storage.from('corpus_documents').list(`${user.id}/${runId}`);
+        if (files && files.length > 0) {
+          await supabase.storage.from('corpus_documents').remove(
+            files.map(f => `${user.id}/${runId}/${f.name}`)
+          );
+        }
+      }
+      
+      // 2. Delete from DB (cascade deletes concepts/documents)
+      await supabase.from('runs').delete().eq('id', runId);
+      
+      // 3. Update UI
+      setRuns(runs.filter(r => r.id !== runId));
+    } catch (err) {
+      console.error('Delete failed', err);
+      alert('Failed to delete book.');
+    }
+  };
+
   const filteredRuns = activeTab === 'All' 
     ? runs 
-    : runs.filter(r => r.domain_tag === activeTab);
+    : runs.filter(r => (r.domain_tags && r.domain_tags.includes(activeTab)) || r.domain_tag === activeTab);
 
   // Group domains that actually have books for "All" tab view
-  const activeDomains = Array.from(new Set(runs.map(r => r.domain_tag || 'Uncategorized')));
+  const activeDomains = Array.from(new Set(
+    runs.flatMap(r => (r.domain_tags && r.domain_tags.length > 0) ? r.domain_tags : [r.domain_tag || 'Uncategorized'])
+  ));
 
   return (
     <div className="min-h-screen px-6 py-12 lg:px-16 max-w-7xl mx-auto">
@@ -114,7 +146,7 @@ export default function RunHistoryPage() {
       <div className="flex overflow-x-auto pb-4 mb-8 custom-scrollbar gap-2 hide-scroll-bar animate-fade-in-up">
         {INTELLECTUAL_DOMAINS.map(domain => {
           // Count active books in this domain
-          const count = domain === 'All' ? runs.length : runs.filter(r => r.domain_tag === domain).length;
+          const count = domain === 'All' ? runs.length : runs.filter(r => (r.domain_tags && r.domain_tags.includes(domain)) || r.domain_tag === domain).length;
           // Hide empty tabs unless it's All
           if (count === 0 && domain !== 'All') return null;
 
@@ -204,12 +236,22 @@ export default function RunHistoryPage() {
                   </div>
                 </div>
 
-                {/* Status Overlay */}
+                {/* Status Overlay & Actions */}
                 <div className="absolute right-3 top-3 z-30">
                   <span className={statusBadge(run.status)}>
                     {statusIcon(run.status)}
                     {run.status}
                   </span>
+                </div>
+
+                <div className="absolute left-3 top-3 z-30 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={(e) => deleteBook(run.id, e)}
+                    className="p-1.5 bg-red-950/80 text-red-400 border border-red-900/50 rounded hover:bg-red-900 hover:text-red-200 transition-colors shadow-sm"
+                    title="Delete Book"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
 

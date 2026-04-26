@@ -26,6 +26,11 @@ async def run_synthesis(state: dict) -> dict:
     
     supabase = get_supabase()
     
+    run_resp = supabase.table("runs").select("*").eq("id", run_id).single().execute()
+    run_data = run_resp.data
+    custom_structure_prompt = run_data.get("custom_structure_prompt", "")
+    is_biography = run_data.get("is_biography", False)
+
     supabase.table("runs").update({"status": "synthesizing", "current_stage": 8}).eq("id", run_id).execute()
     supabase.table("audit_logs").insert({
         "run_id": run_id,
@@ -52,11 +57,18 @@ async def run_synthesis(state: dict) -> dict:
     # 2.5-flash has a 1M context window, so we are safe dumping JSON.
     input_str = json.dumps(synthesis_input, indent=2)
 
+    structure_instructions = ""
+    if custom_structure_prompt:
+        structure_instructions = f"\nUSER CUSTOM STRUCTURE PROMPT:\n{custom_structure_prompt}\n(You MUST adhere to this methodology and structural outline when organizing the JSON 'sections').\n"
+    
+    if is_biography:
+        structure_instructions += "\nBIOGRAPHY MODE ACTIVE: Ensure the sections represent a chronological narrative of the subject's life, milestones, and legacy.\n"
+
     prompt = f"""You are the GNOSIS Synthesis Agent. Your task is to merge raw extracted text concepts and live web research into a final, highly structured, publication-ready Knowledge JSON Document.
 
 INPUT DATA:
 {input_str}
-
+{structure_instructions}
 REQUIREMENTS:
 1. Merge the data into a single coherent structure.
 2. Weave the 'enrichments' (Tavily web search results) directly into their corresponding 'concepts'. 

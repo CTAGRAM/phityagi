@@ -44,6 +44,8 @@ async def run_extraction(state: dict) -> dict:
     run_data = run_resp.data
     target = run_data.get("target_philosophy", "the subject")
     domain_tag = run_data.get("domain_tag") or "auto-detect"
+    ai_domain_select = run_data.get("ai_domain_select", False)
+    is_biography = run_data.get("is_biography", False)
 
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash",
@@ -51,12 +53,35 @@ async def run_extraction(state: dict) -> dict:
         api_key=os.environ.get("GEMINI_API_KEY"),
     )
 
-    # Truncate for the extraction prompt (Gemini 2.5 Flash handles long context well)
+    # Truncate for the extraction prompt
     corpus = raw_text[:MAX_CONTEXT]
+
+    biography_instruction = ""
+    if is_biography:
+        biography_instruction = """
+BIOGRAPHY MODE ACTIVE: The corpus is biographical. Extract the subject's life chronologically.
+Crucially extract:
+- Birth, death, and key life milestones.
+- Personal relationships, mentors, and rivals.
+- Major achievements, publications, or discoveries.
+- Legacy and historical impact.
+Make sure 'concepts' include these life events and milestones as 'entity' or 'concept'.
+"""
+
+    ai_domain_instruction = ""
+    if ai_domain_select:
+        ai_domain_instruction = """
+You must auto-select the most applicable intellectual domains for this corpus.
+Choose ONE OR MORE from this exact list:
+['Philosophy', 'Religion', 'Literature', 'History', 'Science', 'Law', 'Economics', 'Art', 'Language', 'Psychology', 'Politics', 'Technology', 'Mathematics & Logic', 'Ethics', 'Medicine theory and practice']
+Return them as an array of strings in the JSON under the key `domain_tags_detected`.
+"""
 
     extraction_prompt = f"""You are GNOSIS, an expert knowledge extraction engine. Analyze the following corpus about "{target}" and extract a comprehensive structured knowledge map.
 
 DOMAIN CONTEXT: {domain_tag}
+{biography_instruction}
+{ai_domain_instruction}
 
 EXTRACT THE FOLLOWING (be exhaustive — miss nothing):
 
@@ -82,6 +107,7 @@ Return a JSON object with this exact structure:
   ],
   "executive_summary": "A comprehensive 300-500 word summary of the entire corpus covering all major themes, arguments, and contributions.",
   "domain_detected": "the primary intellectual domain (e.g., philosophy, religion, science)"
+  {", 'domain_tags_detected': ['Domain1', 'Domain2']" if ai_domain_select else ""}
 }}
 
 CRITICAL: Extract AT LEAST 15 concepts. Miss nothing significant. Every argument, every definition, every named entity of importance must appear.
@@ -92,7 +118,7 @@ CORPUS:
     response = llm.invoke([HumanMessage(content=extraction_prompt)])
     response_text = response.content
 
-    # Parse JSON from response (handle markdown code blocks)
+    # Parse JSON from response
     cleaned = response_text
     if "```json" in cleaned:
         cleaned = cleaned.split("```json", 1)[1]
@@ -103,7 +129,6 @@ CORPUS:
     try:
         extracted = json.loads(cleaned)
     except json.JSONDecodeError:
-        # Fallback: try to find JSON object in the response
         import re
         json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
         if json_match:
@@ -118,6 +143,7 @@ CORPUS:
     concepts = extracted.get("concepts", [])
     executive_summary = extracted.get("executive_summary", "")
     domain_detected = extracted.get("domain_detected", domain_tag)
+    domain_tags_detected = extracted.get("domain_tags_detected", [])
 
     # Store concepts in DB
     for concept in concepts:
@@ -135,8 +161,13 @@ CORPUS:
 
     # Update run with domain tag if auto-detected
     update_data = {"current_stage": 5}
-    if domain_detected and domain_tag == "auto-detect":
+    if ai_domain_select and domain_tags_detected:
+        update_data["domain_tags"] = domain_tags_detected
+        if domain_tags_detected:
+             update_data["domain_tag"] = domain_tags_detected[0]
+    elif domain_detected and domain_tag == "auto-detect":
         update_data["domain_tag"] = domain_detected
+    
     supabase.table("runs").update(update_data).eq("id", run_id).execute()
 
     supabase.table("audit_logs").insert({

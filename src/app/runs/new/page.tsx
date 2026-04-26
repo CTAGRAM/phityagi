@@ -3,14 +3,15 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Upload, X, BookOpen, AlertCircle, Loader2, ArrowRight, ShieldCheck, ChevronDown, ChevronUp
+  Upload, X, BookOpen, AlertCircle, Loader2, ArrowRight, ShieldCheck, ChevronDown, ChevronUp, CheckCircle2, Settings2
 } from 'lucide-react';
 import { TONE_PRESETS, FILE_EXTENSIONS, CITATION_STYLES } from '@/lib/constants';
 
 const INTELLECTUAL_DOMAINS = [
   'Philosophy', 'Religion', 'Literature', 'History', 
   'Science', 'Law', 'Economics', 'Art', 
-  'Language', 'Psychology', 'Politics', 'Technology'
+  'Language', 'Psychology', 'Politics', 'Technology',
+  'Mathematics & Logic', 'Ethics', 'Medicine theory and practice'
 ];
 
 interface UploadedFile {
@@ -22,7 +23,10 @@ interface UploadedFile {
 export default function NewRunPage() {
   const router = useRouter();
   const [targetName, setTargetName] = useState('');
-  const [domain, setDomain] = useState('Philosophy');
+  const [selectedDomains, setSelectedDomains] = useState<string[]>(['Philosophy']);
+  const [aiDomainSelect, setAiDomainSelect] = useState(false);
+  const [isBiography, setIsBiography] = useState(false);
+  const [customStructurePrompt, setCustomStructurePrompt] = useState('');
   const [tone, setTone] = useState('scholarly');
   const [customTone, setCustomTone] = useState('');
   const [citationStyle, setCitationStyle] = useState('inline');
@@ -31,6 +35,12 @@ export default function NewRunPage() {
   const [corpusOnly, setCorpusOnly] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+
+  const toggleDomain = (d: string) => {
+    setSelectedDomains(prev => 
+      prev.includes(d) ? prev.filter(item => item !== d) : [...prev, d]
+    );
+  };
 
   const handleFiles = useCallback((newFiles: FileList | null) => {
     if (!newFiles) return;
@@ -108,7 +118,11 @@ export default function NewRunPage() {
         .insert({
           user_id: userId,
           target_philosophy: finalTargetName,
-          domain_tag: domain,
+          domain_tag: selectedDomains.length > 0 ? selectedDomains[0] : 'Uncategorized', // For backward compatibility
+          domain_tags: selectedDomains,
+          ai_domain_select: aiDomainSelect,
+          custom_structure_prompt: customStructurePrompt || null,
+          is_biography: isBiography,
           tone_preset: tone === 'custom' ? 'custom' : tone,
           custom_tone: tone === 'custom' ? customTone : null,
           citation_style: citationStyle,
@@ -204,7 +218,7 @@ export default function NewRunPage() {
               Subject & Domain
             </h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-6">
             <div className="relative">
               <label className="block text-[11px] font-medium text-neutral-500 mb-1.5 uppercase tracking-wider">Target Subject</label>
               <input
@@ -215,20 +229,54 @@ export default function NewRunPage() {
                 className="w-full px-4 py-3 rounded-md bg-black border border-neutral-800 focus:border-neutral-500 focus:outline-none text-sm text-white placeholder:text-neutral-600 transition-colors"
               />
             </div>
+            
             <div className="relative">
-              <label className="block text-[11px] font-medium text-neutral-500 mb-1.5 uppercase tracking-wider">Intellectual Domain</label>
-              <div className="relative">
-                <select
-                  value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                  className="w-full px-4 py-3 rounded-md bg-black border border-neutral-800 focus:border-neutral-500 focus:outline-none text-sm text-white appearance-none transition-colors"
-                >
-                  {INTELLECTUAL_DOMAINS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-[11px] font-medium text-neutral-500 uppercase tracking-wider">Intellectual Domains</label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={aiDomainSelect} 
+                    onChange={(e) => setAiDomainSelect(e.target.checked)} 
+                    className="accent-violet-500 w-3.5 h-3.5 bg-neutral-900 border-neutral-700 rounded" 
+                  />
+                  <span className="text-[10px] text-violet-400 font-medium">AI Auto-Select</span>
+                </label>
               </div>
+              
+              <div className={`flex flex-wrap gap-2 ${aiDomainSelect ? 'opacity-40 pointer-events-none' : ''}`}>
+                {INTELLECTUAL_DOMAINS.map((d) => {
+                  const isSelected = selectedDomains.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => toggleDomain(d)}
+                      className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                        isSelected 
+                          ? 'bg-violet-900/40 text-violet-300 border-violet-500/50' 
+                          : 'bg-neutral-900/50 text-neutral-400 border-neutral-800 hover:border-neutral-600 hover:text-neutral-300'
+                      }`}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="relative pt-2 border-t border-neutral-800/50">
+               <label 
+                 className="flex items-center gap-3 cursor-pointer group"
+                 onClick={() => setIsBiography(!isBiography)}
+               >
+                  <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isBiography ? 'bg-violet-600 border-violet-500' : 'bg-neutral-900 border-neutral-700 group-hover:border-neutral-500'}`}>
+                    {isBiography && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-neutral-200 block">Definitive Biography Mode</span>
+                    <span className="text-[10px] text-neutral-500 block">Optimize extraction and synthesis for chronological life events and legacy of a person.</span>
+                  </div>
+                </label>
             </div>
           </div>
         </section>
@@ -258,7 +306,7 @@ export default function NewRunPage() {
             <p className="text-sm text-neutral-300 font-medium mb-1">
               Select or drag files
             </p>
-            <p className="text-xs text-neutral-500">PDF, EPUB, DOCX, TXT. Max 50MB.</p>
+            <p className="text-xs text-neutral-500">PDF, EPUB, DOCX, TXT. Max 200MB.</p>
           </div>
 
           {files.length > 0 && (
@@ -330,6 +378,16 @@ export default function NewRunPage() {
 
             {showAdvanced && (
               <div className="px-4 pb-4 pt-2 space-y-5 border-t border-neutral-800">
+                <div>
+                  <label className="block text-xs font-medium text-neutral-300 mb-2">Book Structure & Construction Methodology</label>
+                  <textarea
+                    value={customStructurePrompt}
+                    onChange={(e) => setCustomStructurePrompt(e.target.value)}
+                    placeholder="Provide a custom prompt specifying the book's structure and construction methodology..."
+                    rows={4}
+                    className="w-full px-4 py-3 rounded-md bg-black border border-neutral-800 focus:border-neutral-500 focus:outline-none text-sm text-white placeholder:text-neutral-600 resize-none"
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-2">Citation Style</label>
                   <div className="flex flex-wrap gap-2">

@@ -213,7 +213,7 @@ export default function ChatPage() {
               <div className="p-2 shrink-0">
                 <button
                   type="submit"
-                  disabled={isLoading || !input.trim()}
+                  disabled={isLoading || !input?.trim()}
                   className="p-2 rounded-xl bg-violet-600 text-white hover:bg-violet-500 hover:shadow-lg hover:shadow-violet-500/20 transition-all disabled:opacity-30 disabled:hover:shadow-none disabled:cursor-not-allowed flex items-center justify-center h-10 w-10"
                 >
                   <Send className="w-4 h-4 translate-x-px" />
